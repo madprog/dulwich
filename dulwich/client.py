@@ -67,6 +67,11 @@ from dulwich.pack import (
 from dulwich.refs import (
     read_info_refs,
     )
+try:
+    from Queue import Queue, Empty
+except ImportError:
+    from queue import Queue, Empty  # python 3.x
+import threading
 
 
 def _fileno_can_read(fileno):
@@ -593,17 +598,21 @@ class SubprocessWrapper(object):
 
     def __init__(self, proc):
         self.proc = proc
-        self.read = proc.stdout.read
         self.write = proc.stdin.write
+        self.queue = Queue()
+        def enqueue_output(out, queue):
+            while True:
+                queue.put(out.read(1))
+            out.close()
+        self.thread = threading.Thread(target=enqueue_output, args=(proc.stdout, self.queue))
+        self.thread.daemon = True
+        self.thread.start()
+
+    def read(self, size):
+        return ''.join(self.queue.get() for i in range(size))
 
     def can_read(self):
-        if subprocess.mswindows:
-            from msvcrt import get_osfhandle
-            from win32pipe import PeekNamedPipe
-            handle = get_osfhandle(self.proc.stdout.fileno())
-            return PeekNamedPipe(handle, 0)[2] != 0
-        else:
-            return _fileno_can_read(self.proc.stdout.fileno())
+        return not self.queue.empty()
 
     def close(self):
         self.proc.stdin.close()
