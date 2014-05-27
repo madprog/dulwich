@@ -358,7 +358,9 @@ class GitClient(object):
             proto.write_pkt_line('want %s\n' % want)
         proto.write_pkt_line(None)
         have = next(graph_walker)
-        while have:
+        count = 0
+        while have and count < 16:
+            count += 1
             proto.write_pkt_line('have %s\n' % have)
             if can_read():
                 pkt = proto.read_pkt_line()
